@@ -8,12 +8,12 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 
 class BaseModelTrainer:
-    def __init__(self, model, train_dataset, test_dataset, device, criterion, learning_rate=0.01, num_epochs=40):
+    def __init__(self, model, train_dataset, test_dataset, device, criterion, learning_rate=0.01, num_epochs=40, batch_size=32):
         self.model = model.to(device)
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
-        self.train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-        self.test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         self.device = device
         self.learning_rate = learning_rate
         self.num_epochs = num_epochs
@@ -27,14 +27,13 @@ class BaseModelTrainer:
         """Plot histograms of the model's layer weights."""
         plt.figure(figsize=(12, 5))
         layer_idx = 1
-        for layer in self.model:
+        for layer in self.model.modules():
             if isinstance(layer, nn.Linear):
                 plt.subplot(1, 2, layer_idx)
                 plt.hist(layer.weight.detach().cpu().numpy().flatten(), bins=50)
                 plt.title(f"{model_name} - Layer {layer_idx} Weights")
                 layer_idx += 1
         plt.show()
-
 
 class ClassificationModelTrainer(BaseModelTrainer):
     def __init__(self, model, train_dataset, test_dataset, device, learning_rate=0.01, num_epochs=40):
@@ -56,25 +55,20 @@ class ClassificationModelTrainer(BaseModelTrainer):
             for inputs, targets in self.test_loader:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-                # Forward pass
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_test_loss += loss.item()
 
-                # Calculate accuracy
                 _, predicted = torch.max(outputs, 1)
                 correct_predictions += (predicted == targets).sum().item()
                 total_predictions += targets.size(0)
 
-                # Store true and predicted labels for classification report
                 self.y_true.extend(targets.cpu().numpy())
                 self.y_pred.extend(predicted.cpu().numpy())
 
-        # Calculate average test loss and accuracy
         avg_test_loss = running_test_loss / len(self.test_loader)
         test_accuracy = 100 * correct_predictions / total_predictions
 
-        # Print classification report
         classification_report(self.y_true, self.y_pred, target_names=self.train_dataset.classes)
 
         return avg_test_loss, test_accuracy, classification_report(self.y_true, self.y_pred, target_names=self.train_dataset.classes)
@@ -87,7 +81,6 @@ class ClassificationModelTrainer(BaseModelTrainer):
         self.test_accuracies = []
 
         for epoch in range(self.num_epochs):
-            # Initialize training metrics
             running_loss = 0.0
             correct_predictions = 0
             total_predictions = 0
@@ -96,28 +89,23 @@ class ClassificationModelTrainer(BaseModelTrainer):
             for inputs, targets in self.train_loader:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-                # Forward pass
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
 
-                # Backward pass and optimization
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                # Calculate training accuracy
                 _, predicted = torch.max(outputs, 1)
                 correct_predictions += (predicted == targets).sum().item()
                 total_predictions += targets.size(0)
 
-            # Calculate average training loss and accuracy for the epoch
             avg_train_loss = running_loss / len(self.train_loader)
             train_accuracy = 100 * correct_predictions / total_predictions
             self.train_losses.append(avg_train_loss)
             self.train_accuracies.append(train_accuracy)
 
-            # Evaluate on test data to get test loss and accuracy
             avg_test_loss, test_accuracy, _ = self.evaluate()
             self.test_losses.append(avg_test_loss)
             self.test_accuracies.append(test_accuracy)
@@ -126,7 +114,6 @@ class ClassificationModelTrainer(BaseModelTrainer):
                 f"Train Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%, "
                 f"Test Loss: {avg_test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
 
-        # Plot training and test metrics
         self.plot_training_progress()
 
     def plot_training_progress(self):
@@ -135,7 +122,6 @@ class ClassificationModelTrainer(BaseModelTrainer):
 
         plt.figure(figsize=(14, 6))
 
-        # Plot loss
         plt.subplot(1, 2, 1)
         plt.plot(epochs, self.train_losses, label="Train Loss")
         plt.plot(epochs, self.test_losses, label="Test Loss", linestyle='--')
@@ -144,7 +130,6 @@ class ClassificationModelTrainer(BaseModelTrainer):
         plt.title("Training and Test Loss")
         plt.legend()
 
-        # Plot accuracy
         plt.subplot(1, 2, 2)
         plt.plot(epochs, self.train_accuracies, label="Train Accuracy")
         plt.plot(epochs, self.test_accuracies, label="Test Accuracy", linestyle='--')
